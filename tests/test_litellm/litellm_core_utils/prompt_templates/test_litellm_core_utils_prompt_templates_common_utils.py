@@ -1,5 +1,6 @@
 import functools
 import json
+import logging
 import os
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +15,7 @@ from litellm.litellm_core_utils.prompt_templates.common_utils import (
     get_format_from_file_id,
     handle_any_messages_to_chat_completion_str_messages_conversion,
     hoist_images_from_tool_messages,
+    parse_tool_call_arguments,
     split_concatenated_json_objects,
     update_messages_with_model_file_ids,
 )
@@ -1480,3 +1482,36 @@ class TestRequestContainsImageContent:
         for _ in range(50):
             nested = {"type": "tool_result", "content": [nested]}
         assert request_contains_image_content([{"role": "user", "content": [nested]}]) is False
+
+
+def test_parse_tool_call_arguments_error_omits_argument_content():
+    """
+    An unparseable arguments string is user data and must not reach the error
+    message: the proxy logs the ValueError, so quoting it publishes whatever the
+    agent was about to run.
+    """
+    arguments = '{"command": "curl -H \'authorization: Bearer sk-live-abc123\' https://internal'
+
+    with pytest.raises(ValueError, match="Failed to parse tool call arguments") as exc_info:
+        parse_tool_call_arguments(arguments, tool_name="bash", context="chat completions")
+
+    error_msg = str(exc_info.value)
+    assert "sk-live-abc123" not in error_msg
+    assert "curl" not in error_msg
+    assert "bash" in error_msg
+    assert "chat completions" in error_msg
+    assert f"{len(arguments)} chars" in error_msg
+    assert "Unterminated string" in error_msg
+
+
+def test_parse_tool_call_arguments_repair_warning_omits_argument_content(caplog):
+    """Same for the repair path, which is the common one and warns on every hit."""
+    arguments = '{"command": "psql postgres://svc:hunter2@db.internal/prod"'
+
+    with caplog.at_level(logging.WARNING, logger="LiteLLM"):
+        result = parse_tool_call_arguments(arguments, tool_name="bash", context="chat completions")
+
+    assert result == {"command": "psql postgres://svc:hunter2@db.internal/prod"}
+    assert "Repaired truncated tool call arguments" in caplog.text
+    assert "hunter2" not in caplog.text
+    assert "postgres://" not in caplog.text

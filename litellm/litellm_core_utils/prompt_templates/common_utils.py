@@ -2050,6 +2050,10 @@ def parse_tool_call_arguments(
     raising an error.  A warning is logged whenever repair succeeds so that
     callers are aware the arguments were not perfectly formed.
 
+    Arguments carry prompt-derived user data, so neither the warning nor the
+    raised error quotes them: both surfaces reach proxy logs, and the caller
+    already holds the arguments it passed in.
+
     Args:
         arguments: The JSON string containing tool arguments, or None.
         tool_name: Optional name of the tool (for error messages).
@@ -2074,12 +2078,10 @@ def parse_tool_call_arguments(
         repaired: Final = _attempt_json_repair(arguments)
         if repaired is not None:
             verbose_logger.warning(
-                "Repaired truncated tool call arguments for tool '%s' (%s). Original (%d chars): %.200s%s",
+                "Repaired truncated tool call arguments for tool '%s' (%s). Original length: %d chars",
                 tool_name or "<unknown>",
                 context or "unknown context",
                 len(arguments),
-                arguments,
-                "..." if len(arguments) > 200 else "",
             )
             return repaired
 
@@ -2090,7 +2092,9 @@ def parse_tool_call_arguments(
         if context:
             error_parts.append(f"({context})")
 
-        error_message: Final = " ".join(error_parts) + f". Error: {original_error}. Arguments: {arguments}"
+        error_message: Final = (
+            " ".join(error_parts) + f". Error: {original_error}. Arguments length: {len(arguments)} chars"
+        )
 
         raise ValueError(error_message) from original_error
 

@@ -1852,7 +1852,7 @@ def test_parse_tool_call_arguments_malformed_json():
     error_msg = str(exc_info.value)
     assert "load_skill" in error_msg
     assert "Anthropic tool invoke" in error_msg
-    assert '{"skill_name": "pptx' in error_msg
+    assert '{"skill_name": "pptx' not in error_msg
     assert "Unterminated string" in error_msg
 
 
@@ -1879,7 +1879,7 @@ def test_convert_to_anthropic_tool_invoke_malformed_json():
 
     error_msg = str(exc_info.value)
     assert "bad_tool" in error_msg
-    assert '{"truncated' in error_msg
+    assert '{"truncated' not in error_msg
 
 
 # ============ _attempt_json_repair Tests ============
